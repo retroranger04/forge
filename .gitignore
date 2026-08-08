@@ -61,3 +61,6 @@ benchmarks/scratch/
 *.pt
 *.ckpt
 *.safetensors
+
+# Local micromamba binary
+bin/
