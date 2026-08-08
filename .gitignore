@@ -11,8 +11,12 @@ env/
 # MCP config
 .mcp.json
 
-# Claude local overrides
+# Agent instruction files (local only, never pushed to remote)
+CLAUDE.md
 CLAUDE.local.md
+AGENTS.md
+.cursorrules
+.windsurfrules
 
 # Python
 __pycache__/
