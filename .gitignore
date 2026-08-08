@@ -1,0 +1,63 @@
+# Environment
+.venv/
+.venv-wsl/
+venv/
+env/
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# MCP config
+.mcp.json
+
+# Claude local overrides
+CLAUDE.local.md
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE / OS
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Data and outputs — large, regenerable
+data/*
+outputs/*
+!data/.gitkeep
+!outputs/.gitkeep
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.synctex.gz
+paper/_minted-*
+
+# Benchmark scratch (keep the results file)
+benchmarks/scratch/
+
+# Model weights
+*.pt
+*.ckpt
+*.safetensors
