@@ -1,0 +1,30 @@
+run_id: session_06
+run_started_at: null
+
+model_checkpoint: outputs/run_01/checkpoints/final.pt
+
+calibration:
+  # Held-out subset of id_test used for calibration.
+  # Remaining id_test samples used for ID coverage measurement.
+  calibration_split_size: 500
+
+  # Nominal coverage levels to calibrate to.
+  nominal_levels: [0.80, 0.90, 0.95]
+
+  # Nonconformity score: absolute residual of sample mean vs ground truth.
+  score: sample_mean_absolute_residual
+
+sampling:
+  num_samples_per_condition: 500
+  num_fm_steps: 20
+  batch_size: 32
+
+data:
+  train_stats_path: data/train_stats.json
+  id_test_dir: data/id_test
+  ood_fidelity_dir: data/ood_fidelity
+  ood_geometry_dir: data/ood_geometry
+
+paths:
+  eval_log_path: outputs/run_01/eval.log
+  results_path: outputs/run_01/coverage_results.json
