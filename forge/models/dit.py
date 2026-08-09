@@ -11,7 +11,10 @@ import math
 import torch
 import torch.nn as nn
 
-MLP_RATIO = 4.0  # DiT default feedforward expansion
+# Feedforward expansion: DiT convention (Peebles & Xie 2023) as adopted by
+# PBFM App G. The locked spec fixes depth, hidden size and head count but not
+# this ratio.
+MLP_RATIO = 4.0
 
 
 def _sincos_1d(dim: int, pos: torch.Tensor) -> torch.Tensor:
@@ -31,9 +34,10 @@ def sincos_pos_embed_2d(dim: int, grid_size: int) -> torch.Tensor:
 def timestep_embedding(t: torch.Tensor, dim: int) -> torch.Tensor:
     """(B,) flow-matching time in [0, 1] -> (B, dim) sinusoidal embedding.
 
-    Scaled to DiT's [0, 1000] timestep convention: at max_period 10000 an
-    unscaled t in [0, 1] would leave every band under one radian, so the
-    embedding would barely vary across the trajectory.
+    The x1000 scaling puts t on the [0, 1000] timestep convention of DiT
+    (Peebles & Xie 2023) as adopted by PBFM App G. Unscaled, at max_period
+    10000, every band would sit under one radian across the whole trajectory
+    and the embedding would barely vary with t.
     """
     half = dim // 2
     freqs = torch.exp(
