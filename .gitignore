@@ -20,6 +20,7 @@ AGENTS.md
 
 # Session review artifacts (local only, findings never pushed to remote)
 notes/session_04_7_*.md
+notes/session_04_8_*.md
 notes/coderabbit_findings_*.md
 
 # Python
