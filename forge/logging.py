@@ -1,15 +1,17 @@
 """Tagged log format for parallel workers writing to one shared file.
 
 Line format:
-    <ISO8601 Z> [<worker_id>] <split_or_phase>/<event> <k=v pairs>
+    <ISO8601 Z> [<worker_id>] <split_or_phase>/<event> run_id=<run_id> <k=v pairs>
 
 Example:
-    2026-08-09T14:32:17Z [train_shard_2] train/progress i=1400 N=2000 elapsed_sec=612
+    2026-08-09T14:32:17Z [train_shard_2] train/progress run_id=run_01 i=1400 N=2000
 
-Every line carries worker_id, split_or_phase and event so that a reader can
-attribute progress to a specific worker. Session Four shipped untagged lines
-from sharded workers and its watchdog could not tell which shard was alive;
-that is the gap this format closes.
+Every line carries worker_id, run_id, split_or_phase and event so that a reader
+can attribute progress to a specific worker of a specific run. Session Four
+shipped untagged lines from sharded workers and its watchdog could not tell
+which shard was alive; that is the gap this format closes. run_id closes the
+second half: a log reused across runs would otherwise let a previous run's
+lines pass for the current one's liveness.
 """
 from __future__ import annotations
 
@@ -61,6 +63,7 @@ def _lock(path: Path):
 def emit(
     log_path: str | Path,
     worker_id: str,
+    run_id: str,
     split_or_phase: str,
     event: Literal["progress", "heartbeat", "complete", "error", "timeout", "warning"],
     **kv: str | int | float,
@@ -68,7 +71,10 @@ def emit(
     """Append a tagged log line. Thread- and process-safe (uses file lock)."""
     if event not in EVENTS:
         raise ValueError(f"event must be one of {EVENTS}, got {event!r}")
-    for name, val in (("worker_id", worker_id), ("split_or_phase", split_or_phase)):
+    if "run_id" in kv:
+        raise ValueError("run_id is a positional parameter, not a k=v field")
+    for name, val in (("worker_id", worker_id), ("run_id", run_id),
+                      ("split_or_phase", split_or_phase)):
         if not val or any(c.isspace() for c in val) or "/" in val or "]" in val:
             raise ValueError(f"{name} must be non-empty with no whitespace, '/' or ']': {val!r}")
 
@@ -76,7 +82,7 @@ def emit(
     # preserves newlines: an exception message carrying one would split into a
     # second physical line that parse_log drops, silently losing the event and
     # making a live worker look stalled. Reject rather than mangle.
-    parts = []
+    parts = [f"run_id={shlex.quote(run_id)}"]
     for k, v in kv.items():
         text = str(v)
         if not _FIELD_NAME.fullmatch(k):
@@ -86,7 +92,7 @@ def emit(
         parts.append(f"{k}={shlex.quote(text)}")
     pairs = " ".join(parts)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    line = f"{ts} [{worker_id}] {split_or_phase}/{event}" + (f" {pairs}\n" if pairs else "\n")
+    line = f"{ts} [{worker_id}] {split_or_phase}/{event} {pairs}\n"
 
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -98,8 +104,11 @@ def emit(
 def parse_log(log_path: str | Path) -> list[dict]:
     """Parse a tagged log file into a list of dicts, one per line.
 
-    Each dict has ts (aware datetime), worker_id, split_or_phase, event and
-    fields (the k=v pairs). Malformed lines are skipped, not raised on.
+    Each dict has ts (aware datetime), worker_id, run_id, split_or_phase, event
+    and fields (the remaining k=v pairs). A line with no run_id= pair parses
+    with run_id None rather than being dropped, so an untagged line is still
+    visible to a reader even though a run-scoped one will not match it.
+    Malformed lines are skipped, not raised on.
     """
     path = Path(log_path)
     if not path.exists():
@@ -125,6 +134,7 @@ def parse_log(log_path: str | Path) -> list[dict]:
         out.append({
             "ts": ts,
             "worker_id": m.group(2),
+            "run_id": fields.pop("run_id", None),
             "split_or_phase": m.group(3),
             "event": m.group(4),
             "fields": fields,

@@ -1,9 +1,9 @@
 """Worker attribution and stall detection over a tagged shared log.
 
-Reads the format defined in forge.logging and decides, per worker, whether it
-finished, went quiet, or ran past its budget. It does not kill anything: the
-caller's on_stall callback owns termination, which keeps this module pure and
-testable.
+Reads the format defined in forge.logging and decides, per worker of one
+run_id, whether it finished, went quiet, or ran past its budget. It does not
+kill anything: the caller's on_stall callback owns termination, which keeps
+this module pure and testable.
 """
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ class Watchdog:
         self,
         log_path: str | Path,
         expected_workers: set[str],
+        run_id: str,
         stale_sec: int = 180,
         budget_sec: int = 5400,  # 90 min
         poll_interval_sec: int = 60,
@@ -29,6 +30,7 @@ class Watchdog:
     ):
         self.log_path = Path(log_path)
         self.expected_workers = set(expected_workers)
+        self.run_id = run_id
         self.stale_sec = stale_sec
         self.budget_sec = budget_sec
         self.poll_interval_sec = poll_interval_sec
@@ -40,6 +42,11 @@ class Watchdog:
         """One pass over the log. Returns {worker_id: status}."""
         seen: dict[str, dict] = {}
         for e in parse_log(self.log_path):
+            # A log file outlives the run that wrote it. Without this filter a
+            # previous run's lines would count as this run's liveness, so a
+            # worker that never started could read as running.
+            if e["run_id"] != self.run_id:
+                continue
             w = e["worker_id"]
             if w not in self.expected_workers:
                 continue
@@ -80,7 +87,7 @@ class Watchdog:
                 # it must fire even if logging the warning fails: w is already
                 # in _fired, meaning no later poll would retry it.
                 try:
-                    emit(self.log_path, "watchdog", "watchdog", "warning",
+                    emit(self.log_path, "watchdog", self.run_id, "watchdog", "warning",
                          worker=w, reason=reason)
                 finally:
                     if self.on_stall is not None:

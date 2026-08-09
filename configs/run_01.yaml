@@ -1,0 +1,42 @@
+run_id: run_01
+run_started_at: null  # populated at runtime
+
+model:
+  img_size: 64
+  patch_size: 8
+  in_channels: 2
+  out_channels: 1
+  depth: 8
+  hidden_size: 256
+  num_heads: 4
+  scalar_cond_dim: 4
+  time_embed_dim: 256
+
+flow_matching:
+  sigma_min: 1.0e-3
+
+training:
+  batch_size: 32
+  total_steps: 150000
+  warmup_steps: 1000
+  lr: 1.0e-4
+  weight_decay: 0.0
+  grad_clip_norm: 1.0
+  ema_decay: 0.999
+
+logging:
+  log_every: 100
+  progress_every: 500
+  val_every: 5000
+  checkpoint_every: 25000
+
+data:
+  train_dir: data/train
+  val_dir: data/id_test
+  val_subset_size: 100
+  stats_path: data/train_stats.json
+
+paths:
+  checkpoint_dir: outputs/run_01/checkpoints
+  log_path: outputs/run_01/train.log
+  final_model_path: outputs/run_01/model_final.pt
