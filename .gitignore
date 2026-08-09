@@ -18,6 +18,10 @@ AGENTS.md
 .cursorrules
 .windsurfrules
 
+# Session review artifacts (local only, findings never pushed to remote)
+notes/session_04_7_*.md
+notes/coderabbit_findings_*.md
+
 # Python
 __pycache__/
 *.py[cod]
