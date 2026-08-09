@@ -45,6 +45,9 @@ data/*
 outputs/*
 !data/.gitkeep
 !outputs/.gitkeep
+# Dataset descriptors are small and belong in the repo; samples never do.
+!data/dataset_spec.yaml
+!data/dataset_summary.md
 
 # LaTeX build artifacts
 paper/*.aux
@@ -68,3 +71,6 @@ benchmarks/scratch/
 
 # Local micromamba binary
 bin/
+
+# FFCx/dolfinx JIT cache (kept in-workspace via XDG_CACHE_HOME)
+.jit-cache/

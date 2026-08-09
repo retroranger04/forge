@@ -1,0 +1,59 @@
+physics:
+  E: 1.0
+  nu: 0.3
+  plate_side: 1.0
+  resolution: 64
+
+parameter_ranges:
+  r_over_L_id: [0.10, 0.30]
+  r_over_L_ood_geometry: [0.30, 0.40]
+  sigma_inf: [1.0e-4, 1.0e-3]
+  theta_deg: [0.0, 90.0]
+
+splits:
+  train:
+    size: 10000
+    halton_start: 0
+    halton_end: 9999
+    physics: plane_stress
+    r_range: [0.10, 0.30]
+  id_test:
+    size: 1000
+    halton_start: 10000
+    halton_end: 10999
+    physics: plane_stress
+    r_range: [0.10, 0.30]
+  ood_fidelity:
+    size: 1000
+    halton_start: 10000
+    halton_end: 10999
+    physics: plane_strain
+    r_range: [0.10, 0.30]
+  ood_geometry:
+    size: 500
+    halton_start: 11000
+    halton_end: 11499
+    physics: plane_stress
+    r_range: [0.30, 0.40]
+
+storage:
+  format: pytorch
+  extension: .pt
+  per_sample_fields:
+    - {name: von_mises, dtype: float32, shape: [64, 64]}
+    - {name: sdf, dtype: float32, shape: [64, 64]}
+    - {name: mask, dtype: uint8, shape: [64, 64]}
+    - {name: params, dtype: float32, shape: [3]}  # [r, sigma_inf, theta_deg]
+  metadata_file: metadata.json
+
+fenicsx:
+  version: 0.11.0
+  element: P2
+  von_mises_formula: "3D full (includes sigma_zz for plane strain)"
+
+reliability:
+  per_sample_timeout_sec: 30
+  sub_agent_watchdog_stale_min: 3
+  sub_agent_hard_budget_min: 90
+
+generated_by: FORGE Session Four
