@@ -22,6 +22,8 @@ from forge.models.dit import DiT  # noqa: E402
 
 WORKER = "coverage_eval"
 SCORE = "sample_mean_absolute_residual"
+ID_COVERAGE_TOLERANCE = 0.05  # |empirical - nominal| above this = calibration broken
+Q90_REFERENCE = 0.002333      # Task 4 small-scale q_hat at 0.90, anomaly reference only
 
 
 def load_ema_model(ckpt_path: Path, device) -> tuple[DiT, dict]:
@@ -47,6 +49,7 @@ def main():
     run_id, dcfg, scfg = cfg["run_id"], cfg["data"], cfg["sampling"]
     levels = cfg["calibration"]["nominal_levels"]
     n_cal = cfg["calibration"]["calibration_split_size"]
+    excl = cfg["calibration"]["excluded_head_size"]
     log_path = ROOT / cfg["paths"]["eval_log_path"]
     if cfg["calibration"]["score"] != SCORE:
         # the field is descriptive, not a switch; an edited value that silently
@@ -77,17 +80,19 @@ def main():
     def split_len(split_dir: str) -> int:
         return len(ForgeSplitDataset(ROOT / split_dir, True, stats_path))
 
-    # id_test partition is derived, never hardcoded: calibration takes the head
-    # and evaluation takes everything after it, so changing
-    # calibration_split_size cannot silently drop or double-count samples.
+    # id_test partition is derived, never hardcoded: an excluded head, then
+    # calibration, then evaluation over the remainder. Changing either size in
+    # the config cannot silently drop or double-count samples.
     id_len = split_len(dcfg["id_test_dir"])
     cal_count = n_each if n_each else n_cal
-    if cal_count + (n_each or 1) > id_len:
+    if excl + cal_count + (n_each or 1) > id_len:
         raise SystemExit(
-            f"calibration needs {cal_count} of {id_len} id_test samples, leaving none to evaluate"
+            f"id_test has {id_len} samples; excluding {excl} and calibrating on "
+            f"{cal_count} leaves none to evaluate"
         )
-    cal_idx = range(cal_count)
-    id_eval_idx = range(cal_count, cal_count + n_each) if n_each else range(n_cal, id_len)
+    cal_idx = range(excl, excl + cal_count)
+    id_eval_idx = (range(cal_idx.stop, cal_idx.stop + n_each) if n_each
+                   else range(excl + n_cal, id_len))
 
     timings = {}
 
@@ -107,6 +112,15 @@ def main():
         raise SystemExit(f"q_hat not increasing with nominal level: {q_hats}")
     print(f"q_hat (normalized units): " +
           ", ".join(f"{lv:.2f}->{q_hats[lv]:.6f}" for lv in sorted(levels)))
+    # not a stop condition: a large move from the small-scale reference is a
+    # signal to investigate after the full results are in, not before
+    ratio = q_hats[0.90] / Q90_REFERENCE
+    q90_anomaly = ratio > 5.0 or ratio < 0.2
+    if q90_anomaly:
+        print(f"ANOMALY: q_hat@0.90 is {ratio:.2f}x the small-scale reference "
+              f"{Q90_REFERENCE:.6f}; continuing")
+        emit(log_path, WORKER, run_id, "calibration", "warning",
+             msg="q90_far_from_smallscale_reference", ratio=f"{ratio:.3f}")
     emit(log_path, WORKER, run_id, "calibration", "complete",
          n=int(cal_scores.shape[0]), elapsed_sec=int(timings["calibration"]),
          **{f"q{int(lv * 100)}": f"{q_hats[lv]:.6f}" for lv in sorted(levels)})
@@ -118,14 +132,21 @@ def main():
         "num_fm_steps": scfg["num_fm_steps"],
         "n_calibration": int(cal_scores.shape[0]),
         "score": SCORE,
-        "id_test_partition": {"calibration": [cal_idx.start, cal_idx.stop],
-                              "evaluation": [id_eval_idx.start, id_eval_idx.stop]},
+        "coverage_definition": "pooled empirical per-pixel coverage; "
+                               "no finite-sample split-conformal guarantee claimed",
+        "id_test_partition": {
+            # excluded head was run_01's training validation subset
+            "excluded_head": [0, excl],
+            "calibration": [cal_idx.start, cal_idx.stop],
+            "evaluation": [id_eval_idx.start, id_eval_idx.stop],
+        },
         # q_hat and widths are residuals, so only the scale factor applies:
         # physical_width = normalized_width * von_mises_std. Coverage itself is
         # unit-invariant (the normalisation is a positive affine map).
         "units": "normalized; physical residual = normalized * von_mises_std",
         "von_mises_std": vm_std,
         "q_hat": {f"{lv:.2f}": q_hats[lv] for lv in sorted(levels)},
+        "q90_anomaly_vs_smallscale": q90_anomaly,
         "splits": {},
     }
     # calibration scores are large; free before the eval splits allocate theirs
@@ -146,7 +167,27 @@ def main():
         results["splits"][name] = row
         print(f"{name}: n={row['n_samples']} " + " ".join(
             f"cov@{int(lv * 100)}={row[f'coverage_at_{int(lv * 100)}']:.4f}"
-            for lv in sorted(levels)) + f"  [{timings[name] / 60:.1f} min]")
+            for lv in sorted(levels))
+            + f" mean|resid|={row['mean_absolute_residual']:.6f}"
+            + f"  [{timings[name] / 60:.1f} min]")
+
+        # ID coverage far from nominal means calibration is broken; stop before
+        # spending two hours measuring OOD against a threshold we cannot trust
+        if name == "id_test" and not args.smoke:
+            off = {lv: row[f"coverage_at_{int(lv * 100)}"] - lv for lv in sorted(levels)}
+            if any(abs(d) > ID_COVERAGE_TOLERANCE for d in off.values()):
+                results["splits"][name]["halted"] = "ID coverage off nominal"
+                out = ROOT / cfg["paths"]["results_path"]
+                out.write_text(json.dumps(results, indent=2), encoding="utf-8")
+                emit(log_path, WORKER, run_id, "id_test", "error",
+                     msg="ID_coverage_off_nominal",
+                     **{f"d{int(lv * 100)}": f"{off[lv]:+.4f}" for lv in sorted(levels)})
+                raise SystemExit(
+                    "STOP: ID empirical coverage deviates from nominal by more than "
+                    f"{ID_COVERAGE_TOLERANCE} ("
+                    + ", ".join(f"{lv:.2f}: {off[lv]:+.4f}" for lv in sorted(levels))
+                    + f"). Calibration is not trustworthy; wrote {out}"
+                )
 
     # --- coverage gap vs ID --------------------------------------------------
     id_row = results["splits"]["id_test"]

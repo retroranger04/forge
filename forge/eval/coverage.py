@@ -13,7 +13,11 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from forge.eval.conformal import compute_nonconformity_scores, empirical_coverage
+from forge.eval.conformal import (
+    _masked_scores,
+    compute_nonconformity_scores,
+    empirical_coverage,
+)
 from forge.eval.sampling import sample_conditional
 from forge.logging import emit
 
@@ -92,7 +96,12 @@ def evaluate_split_coverage(
 
     Interval width is 2 * q_hat: the score is a symmetric absolute residual
     about the sample mean, so the interval half-width is q_hat at every pixel
-    and the mean width is the same constant on every split.
+    and the mean width is the same constant on every split. It is reported for
+    completeness only; `mean_absolute_residual` is the per-split quantity that
+    actually varies.
+
+    Coverage here is pooled empirical per-pixel coverage. No finite-sample
+    split-conformal guarantee is claimed: see the caveat in forge.eval.conformal.
     """
     for level in (0.80, 0.90, 0.95):
         if level not in q_hats:
@@ -114,7 +123,17 @@ def evaluate_split_coverage(
         progress_every=progress_every, seed=seed,
     )
 
-    out = {"split_name": split_name, "n_samples": int(scores.shape[0])}
+    flat = _masked_scores(scores, masks)
+    out = {
+        "split_name": split_name,
+        "n_samples": int(scores.shape[0]),
+        "coverage_definition": "pooled empirical per-pixel coverage; "
+                               "no finite-sample split-conformal guarantee claimed",
+        # varies per split, unlike the interval width, so this is the per-split
+        # magnitude signal to read alongside coverage
+        "mean_absolute_residual": flat.mean().item(),
+        "median_absolute_residual": flat.median().item(),
+    }
     for level in (0.80, 0.90, 0.95):
         tag = f"{int(level * 100)}"
         cov = empirical_coverage(scores, masks, q_hats[level])
@@ -125,6 +144,7 @@ def evaluate_split_coverage(
     if log_path is not None:
         emit(log_path, worker_id, run_id, split_name, "complete",
              n_samples=out["n_samples"],
+             mean_abs_resid=f"{out['mean_absolute_residual']:.6f}",
              cov80=f"{out['coverage_at_80']:.4f}",
              cov90=f"{out['coverage_at_90']:.4f}",
              cov95=f"{out['coverage_at_95']:.4f}",

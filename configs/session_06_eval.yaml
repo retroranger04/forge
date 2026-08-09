@@ -4,8 +4,14 @@ run_started_at: null
 model_checkpoint: outputs/run_01/checkpoints/final.pt
 
 calibration:
-  # Held-out subset of id_test used for calibration.
-  # Remaining id_test samples used for ID coverage measurement.
+  # id_test indices [0, excluded_head_size) were run_01's training validation
+  # subset (validation loss only: no gradient, no model selection). They are
+  # excluded from calibration and from ID coverage so neither reuses them.
+  excluded_head_size: 100
+
+  # Held-out subset of id_test used for calibration: indices
+  # [excluded_head_size, excluded_head_size + calibration_split_size).
+  # Every id_test sample after that is used for ID coverage measurement.
   calibration_split_size: 500
 
   # Nominal coverage levels to calibrate to.
@@ -17,7 +23,10 @@ calibration:
 sampling:
   num_samples_per_condition: 500
   num_fm_steps: 20
-  batch_size: 32
+  # Inference-only chunking of trajectories; does not affect M, FM steps or the
+  # model. Measured on the RTX 4060 Laptop: 94.0 traj/s at 32, 200.5 at 128,
+  # 185.8 at 512.
+  batch_size: 128
 
 data:
   train_stats_path: data/train_stats.json
