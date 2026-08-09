@@ -39,7 +39,12 @@ def log(line):
 
 
 def halton_params(split, index):
-    """Deterministic (r, sigma_inf, theta_deg) for one absolute Halton index."""
+    """Deterministic (r, sigma_inf, theta_deg) for one absolute Halton index.
+
+    The returned r is in physical plate coordinates: the Halton coordinate is
+    mapped into the split's r/L range and then scaled by L_HALF. params[0] in
+    every stored sample is therefore r_physical, never the ratio.
+    """
     from scipy.stats import qmc
 
     eng = qmc.Halton(d=3, scramble=False)

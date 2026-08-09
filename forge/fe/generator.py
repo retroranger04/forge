@@ -229,6 +229,12 @@ def generate_sample(
 ) -> dict:
     """Solve plate-with-hole. Raises SampleTimeoutError if solve exceeds timeout.
 
+    r is the hole radius in physical plate coordinates, not the r/L ratio.
+    The plate has side `plate_side` and half-width L = plate_side / 2, so a
+    caller working in r/L must pass r = (r/L) * plate_side / 2. The spec's
+    ratio ranges live in scripts/generate_dataset.py, which does that
+    conversion via L_HALF before calling here.
+
     Returns dict with keys: von_mises, sdf, mask, params, physics.
     (Also peak_hole_von_mises, the hole-boundary peak read off the FE field,
     used by the physics validation harness.)

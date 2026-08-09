@@ -1,12 +1,19 @@
 physics:
   E: 1.0
   nu: 0.3
-  plate_side: 1.0
+  plate_side: 1.0    # full side length of the square plate
+  plate_half_width: 0.5   # L in every r/L ratio below
   resolution: 64
 
 parameter_ranges:
-  r_over_L_id: [0.10, 0.30]
+  # Two units are in play and must never be conflated:
+  #   r_physical  = hole radius in plate coordinates (plate_side = 1.0)
+  #   r_over_L    = r_physical / L, where L = plate_half_width = 0.5
+  # params[0] in each sample .pt stores r_physical, not r_over_L.
+  r_over_L_id: [0.10, 0.30]              # train, id_test, ood_fidelity
+  r_physical_id: [0.05, 0.15]            # = r_over_L_id * 0.5
   r_over_L_ood_geometry: [0.30, 0.40]
+  r_physical_ood_geometry: [0.15, 0.20]  # = r_over_L_ood_geometry * 0.5
   sigma_inf: [1.0e-4, 1.0e-3]
   theta_deg: [0.0, 90.0]
 
@@ -16,25 +23,29 @@ splits:
     halton_start: 0
     halton_end: 9999
     physics: plane_stress
-    r_range: [0.10, 0.30]
+    r_over_L_range: [0.10, 0.30]
+    r_physical_range: [0.05, 0.15]
   id_test:
     size: 1000
     halton_start: 10000
     halton_end: 10999
     physics: plane_stress
-    r_range: [0.10, 0.30]
+    r_over_L_range: [0.10, 0.30]
+    r_physical_range: [0.05, 0.15]
   ood_fidelity:
     size: 1000
     halton_start: 10000
     halton_end: 10999
     physics: plane_strain
-    r_range: [0.10, 0.30]
+    r_over_L_range: [0.10, 0.30]
+    r_physical_range: [0.05, 0.15]
   ood_geometry:
     size: 500
     halton_start: 11000
     halton_end: 11499
     physics: plane_stress
-    r_range: [0.30, 0.40]
+    r_over_L_range: [0.30, 0.40]
+    r_physical_range: [0.15, 0.20]
 
 storage:
   format: pytorch
@@ -43,7 +54,7 @@ storage:
     - {name: von_mises, dtype: float32, shape: [64, 64]}
     - {name: sdf, dtype: float32, shape: [64, 64]}
     - {name: mask, dtype: uint8, shape: [64, 64]}
-    - {name: params, dtype: float32, shape: [3]}  # [r, sigma_inf, theta_deg]
+    - {name: params, dtype: float32, shape: [3]}  # [r_physical, sigma_inf, theta_deg]
   metadata_file: metadata.json
 
 fenicsx:
