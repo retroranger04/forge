@@ -76,9 +76,15 @@ class Watchdog:
                     "budget_exceeded": f"exceeded {self.budget_sec}s budget",
                     "missing": f"no log line at all after {self.stale_sec}s",
                 }[st]
-                emit(self.log_path, "watchdog", "watchdog", "warning", worker=w, reason=reason)
-                if self.on_stall is not None:
-                    self.on_stall(w, reason)
+                # The callback is what actually terminates a stalled worker, so
+                # it must fire even if logging the warning fails: w is already
+                # in _fired, meaning no later poll would retry it.
+                try:
+                    emit(self.log_path, "watchdog", "watchdog", "warning",
+                         worker=w, reason=reason)
+                finally:
+                    if self.on_stall is not None:
+                        self.on_stall(w, reason)
         return statuses
 
     def run_until_all_complete_or_stalled(self) -> dict:

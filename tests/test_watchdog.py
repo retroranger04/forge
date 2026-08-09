@@ -1,6 +1,8 @@
 import threading
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from forge.logging import emit
 from forge.watchdog import Watchdog
 
@@ -92,6 +94,29 @@ def test_worker_that_never_appears_is_missing(tmp_path):
 
     wd = Watchdog(log, {"w1", "ghost"}, stale_sec=0, poll_interval_sec=60)
     assert wd.run_until_all_complete_or_stalled() == {"w1": "complete", "ghost": "missing"}
+
+
+def test_on_stall_fires_even_if_warning_logging_fails(tmp_path):
+    log = tmp_path / "run.log"
+    write_aged(log, "w1", "progress", age_sec=30, i=400)
+
+    def boom(*a, **k):
+        raise OSError("no space left on device")
+
+    import forge.watchdog as wd_mod
+    original, wd_mod.emit = wd_mod.emit, boom
+    calls = []
+    try:
+        wd = Watchdog(log, {"w1"}, stale_sec=5, poll_interval_sec=60,
+                      on_stall=lambda w, r: calls.append(w))
+        # the callback is what terminates the worker; a logging failure must
+        # not swallow it, since _fired blocks any later retry
+        with pytest.raises(OSError):
+            wd.poll()
+    finally:
+        wd_mod.emit = original
+
+    assert calls == ["w1"]
 
 
 def test_watchdog_logs_a_warning_event(tmp_path):

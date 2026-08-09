@@ -24,6 +24,7 @@ from typing import Literal
 EVENTS = ("progress", "heartbeat", "complete", "error", "timeout", "warning")
 
 _LINE = re.compile(r"^(\S+) \[([^\]\s]+)\] ([^/\s]+)/([^/\s]+)(?: (.*))?$")
+_FIELD_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 if os.name == "nt":
     import msvcrt
@@ -71,8 +72,19 @@ def emit(
         if not val or any(c.isspace() for c in val) or "/" in val or "]" in val:
             raise ValueError(f"{name} must be non-empty with no whitespace, '/' or ']': {val!r}")
 
-    # shlex.quote keeps values containing spaces on one parseable token
-    pairs = " ".join(f"{k}={shlex.quote(str(v))}" for k, v in kv.items())
+    # shlex.quote keeps values containing spaces on one parseable token, but it
+    # preserves newlines: an exception message carrying one would split into a
+    # second physical line that parse_log drops, silently losing the event and
+    # making a live worker look stalled. Reject rather than mangle.
+    parts = []
+    for k, v in kv.items():
+        text = str(v)
+        if not _FIELD_NAME.fullmatch(k):
+            raise ValueError(f"invalid field name: {k!r}")
+        if "\r" in text or "\n" in text:
+            raise ValueError(f"field value must not contain a line break: {k!r}")
+        parts.append(f"{k}={shlex.quote(text)}")
+    pairs = " ".join(parts)
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"{ts} [{worker_id}] {split_or_phase}/{event}" + (f" {pairs}\n" if pairs else "\n")
 

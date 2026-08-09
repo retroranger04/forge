@@ -122,9 +122,13 @@ def convert(split):
     import torch
 
     out_dir = DATA / split
-    files = sorted(out_dir.glob("sample_*.npz"), key=lambda p: int(p.stem.split("_")[1]))
-    meta = []
-    for p in files:
+
+    def idx_of(p):
+        return int(p.stem.split("_")[1])
+
+    npz_files = sorted(out_dir.glob("sample_*.npz"), key=idx_of)
+    converted = {}
+    for p in npz_files:
         # NpzFile keeps the archive open; close it before unlinking, and pull
         # every value out first since the handle is dead afterwards.
         with np.load(p, allow_pickle=False) as z:
@@ -140,8 +144,21 @@ def convert(split):
                 "halton_index": idx,
             }
         torch.save(rec, out_dir / f"sample_{idx}.pt")
-        p.unlink()
-        meta.append({"halton_index": idx, "params": params.tolist(),
+        converted[idx] = (params.tolist(), physics)
+
+    # Index every .pt on disk, not just this run's conversions. An interrupted
+    # run that already deleted some .npz would otherwise record only what was
+    # left, and a second run over an empty directory would record count 0,
+    # destroying the index for an already-complete split.
+    meta = []
+    for p in sorted(out_dir.glob("sample_*.pt"), key=idx_of):
+        idx = idx_of(p)
+        if idx in converted:
+            params, physics = converted[idx]
+        else:
+            prior = torch.load(p, weights_only=True)
+            params, physics = prior["params"].tolist(), prior["physics"]
+        meta.append({"halton_index": idx, "params": params,
                      "physics": physics, "file": f"sample_{idx}.pt"})
 
     (out_dir / "metadata.json").write_text(json.dumps(
@@ -150,7 +167,11 @@ def convert(split):
          "halton_start": SPLITS[split]["start"],
          "halton_end": SPLITS[split]["start"] + SPLITS[split]["size"] - 1,
          "count": len(meta), "samples": meta}, indent=1))
-    print(f"{split}: converted {len(meta)} samples")
+
+    # Sources are dropped only once the index is durable on disk.
+    for p in npz_files:
+        p.unlink(missing_ok=True)
+    print(f"{split}: converted {len(npz_files)} samples, indexed {len(meta)}")
 
 
 if __name__ == "__main__":

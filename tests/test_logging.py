@@ -1,5 +1,7 @@
 import threading
 
+import pytest
+
 from forge.logging import emit, parse_log
 
 
@@ -55,6 +57,23 @@ def test_malformed_lines_are_skipped(tmp_path):
 
     entries = parse_log(log)
     assert [e["worker_id"] for e in entries] == ["w1", "w4"]
+
+
+def test_line_breaking_values_are_rejected(tmp_path):
+    log = tmp_path / "run.log"
+    # a newline would split the record into a second physical line that
+    # parse_log drops, silently losing the event
+    for bad in ("solver failed\nretrying", "carriage\rreturn"):
+        with pytest.raises(ValueError):
+            emit(log, "w1", "train", "error", msg=bad)
+    assert not log.exists() or log.read_text() == ""
+
+
+def test_field_names_that_break_parsing_are_rejected(tmp_path):
+    log = tmp_path / "run.log"
+    for bad in ({"bad name": 1}, {"has=equals": 1}, {"1leading_digit": 1}):
+        with pytest.raises(ValueError):
+            emit(log, "w1", "train", "progress", **bad)
 
 
 def test_values_with_spaces_survive_round_trip(tmp_path):
