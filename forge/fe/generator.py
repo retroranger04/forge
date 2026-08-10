@@ -77,7 +77,8 @@ def _build_mesh(r: float, plate_side: float, comm: MPI.Comm):
     return mesh_data.mesh, mesh_data.facet_tags
 
 
-def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu):
+def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
+           E1=None, E2=None, nu12=None, G12=None):
     comm = MPI.COMM_WORLD
     half = plate_side / 2.0
     msh, facet_tags = _build_mesh(r, plate_side, comm)
@@ -94,8 +95,32 @@ def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu):
     def eps(w):
         return ufl.sym(ufl.grad(w))
 
-    def sig(w):
-        return lmbda * ufl.tr(eps(w)) * ufl.Identity(2) + 2.0 * mu * eps(w)
+    if E1 is None:
+        def sig(w):
+            return lmbda * ufl.tr(eps(w)) * ufl.Identity(2) + 2.0 * mu * eps(w)
+    else:
+        # Orthotropic plane-stress stiffness Q, standard CLT symmetric form.
+        # Session 6.2, Axis B. Fiber direction along x-axis.
+        # Reciprocity nu21/E2 = nu12/E1 gives Q12 == Q21, so the bilinear form
+        # stays symmetric: a non-symmetric Q has no strain energy density.
+        nu21 = (E2 / E1) * nu12
+        den = 1.0 - nu12 * nu21
+        if den <= 0.0:
+            raise ValueError(f"non positive-definite orthotropic law: 1 - nu12*nu21 = {den}")
+        # Runtime Constants rather than literals folded into the form, for the
+        # same reason as nhat/sigma_inf below: baking the stiffness in gives
+        # every anisotropy ratio its own form signature and a fresh FFCx
+        # compilation, which would blow the per-sample timeout once per ratio.
+        def _c(value):
+            return fem.Constant(msh, PETSc.ScalarType(value))
+
+        q11, q12, q22, q66 = _c(E1 / den), _c(nu21 * E1 / den), _c(E2 / den), _c(G12)
+
+        def sig(w):
+            e = eps(w)
+            sxy = 2.0 * q66 * e[0, 1]
+            return ufl.as_matrix([[q11 * e[0, 0] + q12 * e[1, 1], sxy],
+                                  [sxy, q12 * e[0, 0] + q22 * e[1, 1]]])
 
     # Rigid-body modes: full pin at (-half,-half), u_y pin at (+half,+half).
     # Exactly 3 constrained DOFs for 3 RBMs; the traction load is
@@ -225,6 +250,10 @@ def generate_sample(
     plate_side: float = 1.0,
     E: float = 1.0,
     nu: float = 0.3,
+    E1: float | None = None,
+    E2: float | None = None,
+    nu12: float | None = None,
+    G12: float | None = None,
     timeout_sec: float = 30.0,
 ) -> dict:
     """Solve plate-with-hole. Raises SampleTimeoutError if solve exceeds timeout.
@@ -235,12 +264,33 @@ def generate_sample(
     ratio ranges live in scripts/generate_dataset.py, which does that
     conversion via L_HALF before calling here.
 
+    Passing all four of E1, E2, nu12, G12 selects the orthotropic plane-stress
+    law (fibers along x) instead of the isotropic (E, nu) one; passing none
+    keeps the isotropic path. A partial set is an error.
+
     Returns dict with keys: von_mises, sdf, mask, params, physics.
     (Also peak_hole_von_mises, the hole-boundary peak read off the FE field,
     used by the physics validation harness.)
     """
     if physics not in ("plane_stress", "plane_strain"):
         raise ValueError(f"unknown physics: {physics!r}")
+
+    ortho = (E1, E2, nu12, G12)
+    if any(c is not None for c in ortho):
+        if not all(c is not None for c in ortho):
+            raise ValueError(f"orthotropic needs all of E1, E2, nu12, G12; got {ortho}")
+        # A negative or non-finite modulus does not fail the solve, it silently
+        # produces a non-physical stiffness (G12 < 0 gives q66 < 0), so the
+        # moduli are screened here rather than read back out of the field.
+        if not all(math.isfinite(c) for c in ortho):
+            raise ValueError(f"orthotropic parameters must be finite; got {ortho}")
+        if E1 <= 0.0 or E2 <= 0.0 or G12 <= 0.0:
+            raise ValueError(f"E1, E2 and G12 must be positive; got {ortho}")
+        # The reduced stiffness below is the plane-stress form only; plane strain
+        # would need a different derivation, so refuse rather than solve a law
+        # that does not match the requested physics.
+        if physics != "plane_stress":
+            raise ValueError(f"orthotropic law is plane_stress only, got {physics!r}")
 
     def _fire(signum, frame):
         raise SampleTimeoutError(
@@ -253,7 +303,8 @@ def generate_sample(
     prev = signal.signal(signal.SIGALRM, _fire)
     signal.setitimer(signal.ITIMER_REAL, timeout_sec)
     try:
-        return _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu)
+        return _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
+                      E1, E2, nu12, G12)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, prev)
