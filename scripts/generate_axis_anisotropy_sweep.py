@@ -127,9 +127,15 @@ def generate_one_ratio(ratio, points):
     expected_files = {f"sample_{HALTON_START + k}.pt" for k in range(N_SAMPLES)}
     complete = {p.name for p in stage.glob("sample_*.pt")} == expected_files
     if complete:
+        # Swap through a backup rather than deleting first. Between the delete
+        # and the rename the ratio was absent from disk entirely; between the
+        # two renames the previous one is still there under .old.
+        backup = OUT / f"R_{ratio}.old"
+        shutil.rmtree(backup, ignore_errors=True)
         if published.exists():
-            shutil.rmtree(published)
+            published.rename(backup)
         stage.rename(published)
+        shutil.rmtree(backup, ignore_errors=True)
     else:
         emit(LOG, worker, RUN_ID, PHASE, "error", msg="incomplete_ratio_not_published",
              saved=len(meta), expected=N_SAMPLES)
