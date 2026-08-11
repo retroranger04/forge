@@ -78,7 +78,7 @@ def _build_mesh(r: float, plate_side: float, comm: MPI.Comm):
 
 
 def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
-           E1=None, E2=None, nu12=None, G12=None):
+           E1=None, E2=None, nu12=None, G12=None, pre_stress_p=0.0):
     comm = MPI.COMM_WORLD
     half = plate_side / 2.0
     msh, facet_tags = _build_mesh(r, plate_side, comm)
@@ -179,6 +179,14 @@ def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
     # sigma(P2 displacement) is discontinuous-linear, so DG1 is exact.
     W = fem.functionspace(msh, ("DG", 1))
     s = sig(uh)
+    # Uniform biaxial pre-stress p added post-solve. Superposition-valid for
+    # linear elasticity. Session 6.3, Axis C.
+    # Skipped entirely at p == 0 so the zero case keeps the pre-Axis-C form and
+    # stays bit-identical. A runtime Constant rather than a folded literal, for
+    # the same reason as nhat/sigma_inf above: one form signature covers every
+    # pre-stress magnitude instead of one FFCx compilation per magnitude.
+    if pre_stress_p:
+        s = s + fem.Constant(msh, PETSc.ScalarType(pre_stress_p)) * ufl.Identity(2)
     # Full 3D von Mises. Plane strain carries sigma_zz = nu*(sxx+syy); plane
     # stress has sigma_zz = 0, where this reduces exactly to the 2D form.
     szz = nu * (s[0, 0] + s[1, 1]) if physics == "plane_strain" else 0.0
@@ -254,6 +262,7 @@ def generate_sample(
     E2: float | None = None,
     nu12: float | None = None,
     G12: float | None = None,
+    pre_stress_p: float = 0.0,
     timeout_sec: float = 30.0,
 ) -> dict:
     """Solve plate-with-hole. Raises SampleTimeoutError if solve exceeds timeout.
@@ -268,12 +277,23 @@ def generate_sample(
     law (fibers along x) instead of the isotropic (E, nu) one; passing none
     keeps the isotropic path. A partial set is an error.
 
+    pre_stress_p is a uniform biaxial pre-stress added to sigma_xx and sigma_yy
+    after the solve, in the same units as sigma_inf; sigma_xy is untouched. It
+    models an isotropic in-plane residual stress state. The default 0.0 leaves
+    the field exactly as it was before Axis C. Under plane_stress, sigma_zz is
+    0 regardless; under plane_strain, sigma_zz follows the pre-stressed in-plane
+    components.
+
     Returns dict with keys: von_mises, sdf, mask, params, physics.
     (Also peak_hole_von_mises, the hole-boundary peak read off the FE field,
     used by the physics validation harness.)
     """
     if physics not in ("plane_stress", "plane_strain"):
         raise ValueError(f"unknown physics: {physics!r}")
+
+    # Negative pre-stress is not part of the Axis C design; NaN fails this too.
+    if not pre_stress_p >= 0.0:
+        raise ValueError(f"pre_stress_p must be non-negative, got {pre_stress_p!r}")
 
     ortho = (E1, E2, nu12, G12)
     if any(c is not None for c in ortho):
@@ -304,7 +324,7 @@ def generate_sample(
     signal.setitimer(signal.ITIMER_REAL, timeout_sec)
     try:
         return _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
-                      E1, E2, nu12, G12)
+                      E1, E2, nu12, G12, pre_stress_p)
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, prev)
