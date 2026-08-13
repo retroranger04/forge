@@ -188,7 +188,8 @@ Thuerey, N., Holl, P., Mueller, M., Schnell, P., Trost, F., & Um, K. (2022). *Ph
 
 ## License
 
-AGPL v3. See `LICENSE` for details. Academic use is unrestricted; derivative works redistributed as software or as a service must be released under AGPL v3.
+AGPL v3. See `LICENSE` for details. Academic use is unrestricted.
+Derivative works redistributed as software or offered as a network service must be released under AGPL v3, including making the source code available to users of the service.
 
 ## Contact
 
