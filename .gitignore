@@ -27,6 +27,12 @@ notes/coderabbit_findings_*.md
 notes/coderabbit_deferred_reviews.md
 notes/pivot_log.md
 
+# Repository polish staging and verification artifacts
+notes/repo_polish_verification.md
+notes/repo_polish_raw_material.md
+notes/session_repo_polish_report.md
+for_github/
+
 # Python
 __pycache__/
 *.py[cod]
