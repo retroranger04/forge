@@ -18,19 +18,11 @@ AGENTS.md
 .cursorrules
 .windsurfrules
 
-# Session review artifacts (local only, findings never pushed to remote)
-notes/session_04_7_*.md
-notes/session_04_8_*.md
-notes/session_05_*.md
-notes/session_06_*.md
-notes/coderabbit_findings_*.md
-notes/coderabbit_deferred_reviews.md
-notes/pivot_log.md
+# Session review artifacts, environment probes, audit reports — never pushed
+notes/*
+!notes/.gitkeep
 
-# Repository polish staging and verification artifacts
-notes/repo_polish_verification.md
-notes/repo_polish_raw_material.md
-notes/session_repo_polish_report.md
+# Repository polish staging (never pushed)
 for_github/
 
 # Python
