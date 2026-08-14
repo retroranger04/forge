@@ -1,4 +1,4 @@
-"""Post-generation verification for the Axis C residual stress sweep.
+"""Post-generation verification for the residual stress sweep.
 
 Checks counts, on-disk parameter ranges in the same units as the spec, the
 stored pre-stress metadata, and the paired-sample structure at one shared

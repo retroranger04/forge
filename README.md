@@ -122,7 +122,7 @@ Compute cost varies significantly with hardware. The reference training run took
 ├── requirements-wsl.yaml                      # WSL2: FEniCSx + finite element solves
 ├── configs/
 │   ├── run_01.yaml                            # Locked hyperparameters for the trained model
-│   └── session_06_eval.yaml                   # Calibration and evaluation config
+│   └── eval.yaml                              # Calibration and evaluation config
 ├── forge/
 │   ├── models/
 │   │   └── dit.py                             # DiT for 64x64 stress fields (PBFM App G)
@@ -148,7 +148,8 @@ Compute cost varies significantly with hardware. The reference training run took
 │   ├── eval_axis_residual_stress_sweep.py     # Residual stress coverage evaluation
 │   ├── check_pre_stress_physics.py            # Residual stress physics sanity check
 │   ├── verify_axis_residual_stress_sweep.py   # Post-generation verification
-│   └── eval_run_01.py                         # Post-training EMA validation + sample generation
+│   ├── eval_run_01.py                         # Post-training EMA validation + sample generation
+│   └── generate_readme_figures.py             # Generates the plots embedded in this README
 ├── tests/
 │   ├── test_logging.py                        # Shared-log format contract tests
 │   └── test_watchdog.py                       # Watchdog stall-detection tests

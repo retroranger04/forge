@@ -1,6 +1,6 @@
-# scripts/conformal_eval.py
-# Session Six: split conformal calibration on ID plane-stress data and coverage
-# measurement on the ID and OOD splits. Inference only; the model is frozen.
+"""Split conformal calibration on ID plane-stress data and coverage
+measurement on the ID and OOD splits. Inference only; the model is frozen.
+"""
 import argparse
 import json
 import sys
@@ -45,12 +45,13 @@ def main():
                     help="tiny end-to-end pass: 4 conditions per split, M=50")
     args = ap.parse_args()
 
-    cfg = yaml.safe_load((ROOT / "configs/session_06_eval.yaml").read_text(encoding="utf-8"))
+    cfg = yaml.safe_load((ROOT / "configs/eval.yaml").read_text(encoding="utf-8"))
     run_id, dcfg, scfg = cfg["run_id"], cfg["data"], cfg["sampling"]
     levels = cfg["calibration"]["nominal_levels"]
     n_cal = cfg["calibration"]["calibration_split_size"]
     excl = cfg["calibration"]["excluded_head_size"]
     log_path = ROOT / cfg["paths"]["eval_log_path"]
+    (ROOT / cfg["paths"]["results_path"]).parent.mkdir(parents=True, exist_ok=True)
     if cfg["calibration"]["score"] != SCORE:
         # the field is descriptive, not a switch; an edited value that silently
         # changed nothing is the drift this check exists to stop

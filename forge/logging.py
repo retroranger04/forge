@@ -7,9 +7,9 @@ Example:
     2026-08-09T14:32:17Z [train_shard_2] train/progress run_id=run_01 i=1400 N=2000
 
 Every line carries worker_id, run_id, split_or_phase and event so that a reader
-can attribute progress to a specific worker of a specific run. Session Four
-shipped untagged lines from sharded workers and its watchdog could not tell
-which shard was alive; that is the gap this format closes. run_id closes the
+can attribute progress to a specific worker of a specific run. Untagged lines
+from sharded workers leave a watchdog unable to tell which shard is alive;
+that is the gap this format closes. run_id closes the
 second half: a log reused across runs would otherwise let a previous run's
 lines pass for the current one's liveness.
 """

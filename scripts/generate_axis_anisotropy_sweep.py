@@ -1,4 +1,4 @@
-"""Axis B test data: 500 orthotropic FE samples at each of six anisotropy ratios.
+"""Anisotropy-sweep test data: 500 orthotropic FE samples at each of six anisotropy ratios.
 
 Runs entirely in the WSL2 venv, which carries both dolfinx and torch, so this
 writes sample_<i>.pt directly and needs none of generate_dataset.py's
@@ -25,7 +25,7 @@ from forge.logging import emit  # noqa: E402
 
 OUT = ROOT / "data" / "axis_anisotropy_sweep"
 LOG = OUT / "generation.log"
-RUN_ID = "session_06_2_axis_b"
+RUN_ID = "anisotropy_sweep_gen"
 PHASE = "anisotropy_sweep"
 
 R_VALUES = [1.0, 1.1, 1.25, 1.5, 2.0, 3.0]  # R = E1/E2, stiff direction along x

@@ -1,4 +1,4 @@
-"""Axis C test data: 500 samples at each of seven uniform biaxial pre-stress levels.
+"""Residual-stress-sweep test data: 500 samples at each of seven uniform biaxial pre-stress levels.
 
 Runs entirely in the WSL2 venv, which carries both dolfinx and torch, so this
 writes sample_<i>.pt directly and needs none of generate_dataset.py's
@@ -25,12 +25,12 @@ from forge.logging import emit  # noqa: E402
 
 OUT = ROOT / "data" / "axis_residual_stress_sweep"
 LOG = OUT / "generation.log"
-RUN_ID = "session_06_3_axis_c"
+RUN_ID = "residual_stress_sweep_gen"
 PHASE = "residual_stress_sweep"
 
 # P = pre-stress magnitude as a percentage of the reference load SIGMA_REF.
 P_VALUES = [0.0, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
-# Nominal reference, fixed by the Axis C spec, which pins the seven absolute
+# Nominal reference, fixed by the residual-stress spec, which pins the seven absolute
 # magnitudes at 0, 5.0e-7, 1.25e-6, 2.5e-6, 5.0e-6, 1.0e-5, 2.5e-5. It is a
 # round mid-decade value, NOT the arithmetic mean of SIGMA_RANGE, which is
 # 5.5e-4. The percentages are labels on those fixed magnitudes.

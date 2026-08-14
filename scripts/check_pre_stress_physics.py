@@ -1,4 +1,4 @@
-"""Axis C sanity check: does uniform biaxial pre-stress move the von Mises field?
+"""Residual pre-stress sanity check: does uniform biaxial pre-stress move the von Mises field?
 
 Two gates, both mandatory before generating the sweep:
   1. relative MAE >= 1% between p=0 and p=2.5e-5 (P=5.0%) at three (r, theta).
@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT))
 from forge.fe.generator import generate_sample  # noqa: E402
 
 SIGMA_INF = 5.0e-4      # nominal reference load, matches SIGMA_REF in the sweep script
-P_MAX = 2.5e-5          # the P = 5.0% magnitude fixed by the Axis C spec
+P_MAX = 2.5e-5          # the P = 5.0% magnitude fixed by the residual-stress spec
 PHYSICS = "plane_stress"
 POINTS = [(0.10, 0.0), (0.06, 30.0), (0.14, 60.0)]
 

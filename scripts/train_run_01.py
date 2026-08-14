@@ -1,6 +1,6 @@
-# scripts/train_run_01.py
-# Runs training as configured in configs/run_01.yaml.
-# All progress emitted to configured log path with run_id from config.
+"""Runs training as configured in configs/run_01.yaml.
+All progress emitted to configured log path with run_id from config.
+"""
 import sys
 from datetime import datetime, timezone
 from pathlib import Path

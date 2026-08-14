@@ -100,7 +100,7 @@ def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
             return lmbda * ufl.tr(eps(w)) * ufl.Identity(2) + 2.0 * mu * eps(w)
     else:
         # Orthotropic plane-stress stiffness Q, standard CLT symmetric form.
-        # Session 6.2, Axis B. Fiber direction along x-axis.
+        # Fiber direction along x-axis.
         # Reciprocity nu21/E2 = nu12/E1 gives Q12 == Q21, so the bilinear form
         # stays symmetric: a non-symmetric Q has no strain energy density.
         nu21 = (E2 / E1) * nu12
@@ -180,9 +180,9 @@ def _solve(r, sigma_inf, theta_deg, physics, resolution, plate_side, E, nu,
     W = fem.functionspace(msh, ("DG", 1))
     s = sig(uh)
     # Uniform biaxial pre-stress p added post-solve. Superposition-valid for
-    # linear elasticity. Session 6.3, Axis C.
-    # Skipped entirely at p == 0 so the zero case keeps the pre-Axis-C form and
-    # stays bit-identical. A runtime Constant rather than a folded literal, for
+    # linear elasticity.
+    # Skipped entirely at p == 0 so the zero case stays bit-identical to the
+    # form before pre-stress support existed. A runtime Constant rather than a folded literal, for
     # the same reason as nhat/sigma_inf above: one form signature covers every
     # pre-stress magnitude instead of one FFCx compilation per magnitude.
     if pre_stress_p:
@@ -280,7 +280,7 @@ def generate_sample(
     pre_stress_p is a uniform biaxial pre-stress added to sigma_xx and sigma_yy
     after the solve, in the same units as sigma_inf; sigma_xy is untouched. It
     models an isotropic in-plane residual stress state. The default 0.0 leaves
-    the field exactly as it was before Axis C. Under plane_stress, sigma_zz is
+    the field exactly as it was before pre-stress support was added. Under plane_stress, sigma_zz is
     0 regardless; under plane_strain, sigma_zz follows the pre-stressed in-plane
     components.
 
@@ -291,7 +291,7 @@ def generate_sample(
     if physics not in ("plane_stress", "plane_strain"):
         raise ValueError(f"unknown physics: {physics!r}")
 
-    # Negative pre-stress is not part of the Axis C design; NaN fails this too.
+    # Negative pre-stress is not part of the design; NaN fails this too.
     if not pre_stress_p >= 0.0:
         raise ValueError(f"pre_stress_p must be non-negative, got {pre_stress_p!r}")
 

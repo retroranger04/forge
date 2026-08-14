@@ -1,11 +1,11 @@
-"""Axis B coverage evaluation: the frozen run_01 model against six anisotropy ratios.
+"""Anisotropy-sweep coverage evaluation: the frozen run_01 model against six anisotropy ratios.
 
-Inference only. The checkpoint, the Session Six calibration thresholds and every
+Inference only. The checkpoint, the locked calibration thresholds and every
 existing split are read-only here; this writes coverage numbers and a log and
 nothing else.
 
-q_hat is read out of the Session Six results file rather than retyped, so the
-thresholds cannot drift by transcription, and asserted against the session spec.
+q_hat is read out of the baseline results file rather than retyped, so the
+thresholds cannot drift by transcription, and asserted against the locked spec.
 Results are rewritten after every ratio, so a failure late in the sweep still
 leaves the ratios that already finished on disk.
 """
@@ -27,7 +27,7 @@ from forge.data.dataset import ForgeSplitDataset  # noqa: E402
 from forge.eval.coverage import evaluate_split_coverage  # noqa: E402
 
 R_VALUES = [1.0, 1.1, 1.25, 1.5, 2.0, 3.0]
-RUN_ID = "session_06_2_axis_b"
+RUN_ID = "anisotropy_sweep_eval"
 LEVELS = (0.80, 0.90, 0.95)
 
 DATA = ROOT / "data" / "axis_anisotropy_sweep"
@@ -36,10 +36,10 @@ LOG = OUT_DIR / "eval.log"
 RESULTS = OUT_DIR / "coverage_results.json"
 STATS = ROOT / "data" / "train_stats.json"
 CHECKPOINT = ROOT / "outputs" / "run_01" / "checkpoints" / "final.pt"
-SESSION_SIX = ROOT / "outputs" / "run_01" / "axis_4_plane_strain" / "coverage_results.json"
-SESSION_SIX_CONFIG = ROOT / "configs" / "session_06_eval.yaml"
+BASELINE_RESULTS = ROOT / "outputs" / "run_01" / "axis_4_plane_strain" / "coverage_results.json"
+CALIBRATION_CONFIG = ROOT / "configs" / "eval.yaml"
 
-# Session 6.2 spec values, to 6 dp; the exact thresholds come from SESSION_SIX.
+# Locked calibration spec values, to 6 dp; the exact thresholds come from BASELINE_RESULTS.
 SPEC_Q_HAT = {0.80: 0.001667, 0.90: 0.002565, 0.95: 0.003996}
 CONTROL_TOLERANCE = 0.05
 PER_R_BUDGET_SEC = 25 * 60
@@ -50,14 +50,14 @@ BATCH_SIZE = 128
 SEED = 1000
 
 
-def session_six_reference(ckpt_step: int) -> tuple[dict[float, float], float]:
-    """Locked thresholds and the ID control coverage, read from the Session Six run.
+def baseline_reference(ckpt_step: int) -> tuple[dict[float, float], float]:
+    """Locked thresholds and the ID control coverage, read from the baseline run.
 
     q_hat is only meaningful for the checkpoint and sampling configuration that
     produced it, and the control comparison is only meaningful if this run
     reproduces that configuration, so the provenance is asserted rather than
     assumed. Checked here: checkpoint step and M / FM steps from the results
-    file, and M / FM steps / batch size from the Session Six config that
+    file, and M / FM steps / batch size from the baseline config that
     produced it. Batch size matters because `generate_split_scores` derives a
     per-batch sampler seed, so a different batching changes the draws.
 
@@ -66,37 +66,37 @@ def session_six_reference(ckpt_step: int) -> tuple[dict[float, float], float]:
     split this control compares against, normalized from the same
     train_stats.json.
 
-    Not machine-checkable: the sampler seed. Session Six passed seed=1000 for
+    Not machine-checkable: the sampler seed. The baseline run passed seed=1000 for
     its evaluation splits (scripts/conformal_eval.py) and SEED here matches, but
     neither the results file nor the config records it. Recording it would mean
-    changing the Session Six artifact schema, which is out of scope for this
+    changing the baseline artifact schema, which is out of scope for this
     axis; the mismatch risk is noted rather than silently ignored.
 
     Both returned values are read out of the file rather than retyped, so
     neither can drift by transcription.
     """
-    doc = json.loads(SESSION_SIX.read_text(encoding="utf-8"))
+    doc = json.loads(BASELINE_RESULTS.read_text(encoding="utf-8"))
     q_hats = {float(k): float(v) for k, v in doc["q_hat"].items()}
     for level, spec in SPEC_Q_HAT.items():
         if round(q_hats[level], 6) != spec:
             raise SystemExit(f"q_hat at {level} is {q_hats[level]!r}, which does not round "
-                             f"to the session spec value {spec}")
+                             f"to the locked spec value {spec}")
     if doc["checkpoint_step"] != ckpt_step:
-        raise SystemExit(f"Session Six calibrated on checkpoint step {doc['checkpoint_step']}, "
+        raise SystemExit(f"Baseline calibrated on checkpoint step {doc['checkpoint_step']}, "
                          f"this run loaded step {ckpt_step}; q_hat does not transfer")
     if doc["num_samples_per_condition"] != M or doc["num_fm_steps"] != FM_STEPS:
         raise SystemExit(
-            f"Session Six sampled M={doc['num_samples_per_condition']} at "
+            f"Baseline sampled M={doc['num_samples_per_condition']} at "
             f"{doc['num_fm_steps']} FM steps; this run uses M={M} at {FM_STEPS}. "
             "The R=1.0 control would not be comparable.")
 
-    scfg = yaml.safe_load(SESSION_SIX_CONFIG.read_text(encoding="utf-8"))["sampling"]
+    scfg = yaml.safe_load(CALIBRATION_CONFIG.read_text(encoding="utf-8"))["sampling"]
     mismatched = {k: (scfg[k], v) for k, v in
                   (("num_samples_per_condition", M), ("num_fm_steps", FM_STEPS),
                    ("batch_size", BATCH_SIZE)) if scfg[k] != v}
     if mismatched:
-        raise SystemExit(f"sampling settings differ from Session Six "
-                         f"(session six, this run): {mismatched}")
+        raise SystemExit(f"sampling settings differ from the baseline "
+                         f"(baseline, this run): {mismatched}")
 
     id_row = doc["splits"]["id_test"]
     if id_row["split_name"] != "id_test":
@@ -110,7 +110,7 @@ def main():
     device = torch.device("cuda")
     torch.cuda.reset_peak_memory_stats(device)
     model, ckpt = load_ema_model(CHECKPOINT, device)
-    q_hats, id_cov90_reference = session_six_reference(int(ckpt["step"]))
+    q_hats, id_cov90_reference = baseline_reference(int(ckpt["step"]))
     vm_std = json.loads(STATS.read_text(encoding="utf-8"))["von_mises"]["std"]
     print(f"checkpoint step {ckpt['step']}, M={M}, {FM_STEPS} FM steps, batch {BATCH_SIZE}")
     print("q_hat (locked, normalized): " +
@@ -127,7 +127,7 @@ def main():
                                "no finite-sample split-conformal guarantee claimed",
         "units": "normalized; physical residual = normalized * von_mises_std",
         "von_mises_std": vm_std,
-        "q_hat_source": "Session Six, locked and not recomputed",
+        "q_hat_source": "baseline run, locked and not recomputed",
         "q_hat": {f"{lv:.2f}": q_hats[lv] for lv in LEVELS},
         "material": {"E1": 1.0, "nu12": 0.3, "G12": 0.384615,
                      "fiber_direction_deg": 0.0, "physics": "plane_stress"},
@@ -186,15 +186,15 @@ def main():
 
         if ratio == 1.0:
             off = abs(row["coverage_at_90"] - id_cov90_reference)
-            print(f"control check: R=1.0 cov@90={row['coverage_at_90']:.4f} vs Session Six "
+            print(f"control check: R=1.0 cov@90={row['coverage_at_90']:.4f} vs baseline "
                   f"{id_cov90_reference:.4f}, |delta|={off:.4f} "
                   f"(tolerance {CONTROL_TOLERANCE})", flush=True)
             if off > CONTROL_TOLERANCE:
-                results["halted"] = "R=1.0 control coverage off Session Six ID coverage"
+                results["halted"] = "R=1.0 control coverage off baseline ID coverage"
                 flush_results()
                 raise SystemExit(
                     f"STOP: R=1.0 control cov@90 {row['coverage_at_90']:.4f} deviates from "
-                    f"Session Six ID {id_cov90_reference:.4f} by {off:.4f} > "
+                    f"baseline ID {id_cov90_reference:.4f} by {off:.4f} > "
                     f"{CONTROL_TOLERANCE}. The shared pipeline moved; wrote {RESULTS}")
 
     # coverage gap from the R = 1.0 isotropic control
