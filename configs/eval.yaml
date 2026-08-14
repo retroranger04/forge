@@ -1,4 +1,4 @@
-run_id: forge_run_01
+run_id: run_01
 run_started_at: null
 
 model_checkpoint: outputs/run_01/checkpoints/final.pt
