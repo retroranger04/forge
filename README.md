@@ -4,11 +4,11 @@ Flow-matching with cOnformal Rigour for Generative Elasticity.
 
 ![Three-experiment diagnostic panel](docs/figures/headline_panel.png)
 
-FORGE is a study of when a generative surrogate model of 2D plate-with-hole stress fields can be trusted, and when it cannot. I trained a 9.7M-parameter diffusion transformer (DiT) flow-matching model on 10,000 finite-element solutions of linear elastic plates under far-field tension, calibrated its predictions using split conformal prediction, and then measured how the calibrated coverage responds when the underlying physics is perturbed along three physically-meaningful axes that the model was never told about. The measurements span from severe categorical misspecification (plane stress trained, plane strain tested) where coverage collapses to 0.2% at nominal 90%, through graded material perturbation (isotropic trained, orthotropic tested) that produces a clean detection-and-saturation curve, to graded initial-condition perturbation (stress-free reference trained, pre-stressed tested) where a real detection floor is visible at 0.1% pre-stress and the diagnostic transitions cleanly through its dynamic range before saturating. The whole panel shares a single trained model and a single calibration threshold — only the test data changes across experiments.
+FORGE is a study of when a generative surrogate model of 2D plate-with-hole stress fields can be trusted, and when it cannot. I trained a 9.7M-parameter diffusion transformer (DiT) flow-matching model on 10,000 finite-element solutions of linear elastic plates under far-field tension, calibrated its predictions using split conformal prediction, and then measured how the calibrated coverage responds when the underlying physics is perturbed along three physically-meaningful axes that the model was never told about. The measurements span from severe categorical misspecification (plane stress trained, plane strain tested) where coverage collapses to 0.2% at nominal 90%, through graded material perturbation (isotropic trained, orthotropic tested) that produces a clean detection-and-saturation curve, to graded initial-condition perturbation (stress-free reference trained, pre-stressed tested) where a real detection floor is visible at 0.1% pre-stress and the diagnostic transitions cleanly through its dynamic range before saturating. The whole panel shares a single trained model and a single calibration state with three locked thresholds — only the test data changes across experiments.
 
 ## What this shows
 
-Three experiments, one shared model, one shared calibration threshold.
+Three experiments, one shared model, a single calibration state with three locked thresholds.
 
 ### Physical regime: plane stress trained, plane strain tested
 
@@ -61,15 +61,15 @@ This experiment was designed to test three regimes simultaneously. At P=0.1% the
 
 ## The system
 
-**Model.** DiT, 8 blocks, hidden dim 256, 4 attention heads, patch size 8, AdaLN-Zero conditioning, MLP ratio 4. Total 9,716,544 trainable parameters. Input channels: noisy state + SDF of the hole. Scalar conditioning: [r, σ_∞, sin(θ), cos(θ)]. Output: velocity field for flow matching. Architecture follows PBFM App G (Darcy scale) adapted for 64×64 stress fields.
+**Model.** DiT, 8 blocks, hidden dim 256, 4 attention heads, patch size 8, AdaLN-Zero conditioning. 9,716,544 trainable parameters. Input: noisy state + SDF of the hole; conditioning: [r, σ_∞, sin(θ), cos(θ)]; output: velocity field for flow matching. Architecture follows PBFM App G (Darcy scale) adapted for 64×64 stress fields.
 
-**Training.** Conditional flow matching with OT paths (Lipman et al. 2023), σ_min = 10⁻³. AdamW, lr = 10⁻⁴, weight decay 0, EMA decay 0.999, gradient clip norm 1.0. 150,000 steps at batch 32 with 1,000-step linear warmup. Validation every 5,000 steps, checkpoint every 25,000. Total wall clock: 76.7 minutes on an RTX 4060 Laptop GPU (8GB), peak VRAM 558 MiB. Final train loss 0.008516, val loss 0.011806, EMA val loss 0.007535.
+**Training.** Conditional flow matching with OT paths (Lipman et al. 2023). AdamW, lr = 10⁻⁴, EMA decay 0.999. 150,000 steps at batch 32 with 1,000-step linear warmup. Wall clock: 76.7 minutes on an RTX 4060 Laptop GPU (8GB).
 
-**Dataset.** 12,500 FE solutions across four splits: 10,000 training samples (plane stress, r/L ∈ [0.10, 0.30], σ_∞ ∈ [10⁻⁴, 10⁻³], θ ∈ [0°, 90°]), 1,000 ID test, 1,000 paired plane-strain OOD-fidelity, 500 r/L-extrapolated OOD-geometry. Halton-sampled. FE pipeline: gmsh mesh generation + dolfinx P2 linear elasticity solve → 64×64 von Mises stress grid. Physics validated against Kirsch analytical solution (small-hole limit) and Peterson stress concentration factor (finite-plate correction) to under 0.9% and 7% respectively.
+**Dataset.** 12,500 FE solutions across four splits: 10,000 training (plane stress, r/L ∈ [0.10, 0.30], σ_∞ ∈ [10⁻⁴, 10⁻³], θ ∈ [0°, 90°]), 1,000 ID test, 1,000 paired plane-strain OOD-fidelity, 500 r/L-extrapolated OOD-geometry. FE pipeline: gmsh mesh generation + dolfinx P2 linear elasticity solve → 64×64 von Mises stress grid. Physics validated against the Kirsch analytical solution and Peterson stress concentration factor to under 0.9% and 7% respectively.
 
-**Calibration.** Split conformal prediction on per-pixel von Mises residuals. Nonconformity score: absolute residual of sample mean vs ground truth. M=500 generations per test point at 20 flow matching inference steps. Calibration on 500 held-out ID samples produces q_hat values of {0.001667, 0.002565, 0.003996} at nominal coverage levels {80%, 90%, 95%} in normalized units. These thresholds are locked and reused across all three experiments.
+**Calibration.** Split conformal prediction on per-pixel von Mises residuals, M=500 generations per test point at 20 flow matching inference steps. Calibration on 500 held-out ID samples produces q_hat values of {0.001667, 0.002565, 0.003996} at nominal coverage levels {80%, 90%, 95%}, locked and reused across all three experiments.
 
-**Per-experiment test data.** The plane-strain experiment reuses the existing OOD-fidelity split (1,000 paired plane-strain samples). Anisotropy: 6 orthotropic test sets, 500 samples each (3,000 total). Residual pre-stress: 7 pre-stressed test sets, 500 samples each (3,500 total). Total new FE data generated for the panel: 6,500 samples.
+**Per-experiment test data.** Plane-strain reuses the existing OOD-fidelity split (1,000 paired plane-strain samples). Anisotropy: 6 orthotropic test sets, 500 samples each. Residual pre-stress: 7 pre-stressed test sets, 500 samples each. Total new FE data generated for the panel: 6,500 samples.
 
 ## Getting started
 
@@ -157,26 +157,6 @@ Compute cost varies significantly with hardware. The reference training run took
     └── figures/                               # Plots embedded in this README
 ```
 
-## Design decisions
-
-**Why auxiliary axes rather than direct-input extrapolation.** Perturbing an input the model was trained on (extrapolating θ beyond 90°, or extrapolating hole radius beyond training range) tests whether the model generalizes past its training distribution. That's a well-studied problem and mostly answers "no, models don't extrapolate." Perturbing an auxiliary variable — one the model has no input channel for and therefore cannot represent — tests something more interesting: whether the calibrated diagnostic can detect misspecification the model itself is structurally blind to. The three experiments here (physics regime, material anisotropy, residual stress) are all auxiliary in this sense. The model receives the same four scalars (r, σ_∞, sin θ, cos θ) plus the SDF regardless of which physical variable is perturbed. Any coverage response is the diagnostic detecting misspecification the model cannot see.
-
-**Why flow matching rather than a deterministic surrogate.** The calibration procedure needs an ensemble of predictions per input to estimate residual distributions. A deterministic surrogate gives one prediction per input; getting an ensemble requires either training multiple models (expensive) or Monte Carlo dropout (approximate). A generative surrogate produces an ensemble by design — draw M samples from the conditional distribution at each input and use their empirical distribution to construct nonconformity scores. Flow matching is a specific choice within generative modeling that trains stably, samples efficiently, and has strong recent results on physics fields (PBFM). Diffusion would also work but flow matching's OT paths give straighter trajectories at inference.
-
-**Why split conformal rather than other UQ methods.** Split conformal prediction has a rare property: it produces distribution-free coverage guarantees given only the assumption that calibration and test data are exchangeable. No Gaussian assumptions on residuals, no correctness assumptions about the underlying model. The guarantee is finite-sample. This makes it a natural diagnostic — when coverage degrades on a test distribution, the exchangeability assumption is what's broken, and that's a specific and interpretable failure mode.
-
-**Why a single trained model shared across experiments.** The panel's central claim is about the diagnostic, not about the surrogate. Using one model across all three experiments controls for model variability and makes the coverage differences attributable to the physical variable being perturbed rather than to different training runs. This shared-model design means the three experiments are directly comparable to each other on a common baseline (the R=1.0 control in anisotropy and the P=0.0 control in residual stress both reproduce ID coverage to within 0.005 of nominal).
-
-## What this shows and doesn't
-
-The diagnostic detects auxiliary physical misspecification along three qualitatively distinct axes. It produces different signatures for different failure modes: categorical collapse for regime change, steep-then-saturated response for material anisotropy, three-regime response (floor, transition, saturation) for graded initial-condition perturbation. Coverage tracks these signatures with dynamic range concentrated in the small-perturbation region.
-
-This work does not compare split conformal against alternative UQ approaches (ensembles, evidential learning, Bayesian methods). It does not test the diagnostic on 3D problems, on nonlinear elasticity, on other geometries, or on other loading types. The trained surrogate has known limits — plane strain fields are 116× harder for the calibrated intervals than plane stress fields — and this project quantifies those limits rather than closing them. Extending the surrogate's competence beyond its training distribution is not attempted here; the interesting question addressed is what the calibration can detect, not how to fix what it flags.
-
-## Future directions
-
-The diagnostic signal has instrumental value beyond deployment-time trust. If an FE solver can be run selectively on inputs the diagnostic flags as misspecified, those cases become labeled examples of "the current model's assumptions don't match reality here." An active-learning loop — use the diagnostic as an acquisition function, expand training data at flagged inputs, retrain — would iteratively expand the surrogate's reliable-operation envelope while spending expensive full-solver compute only where it's most informative. The diagnostic thus serves not just as a deployment-time trust signal but as the sensor of an adaptive model improvement loop. Building that loop is out of scope for this project but is where I think the natural continuation lives.
-
 ## References
 
 Angelopoulos, A. N., & Bates, S. (2023). *A Gentle Introduction to Conformal Prediction and Distribution-Free Uncertainty Quantification.*
@@ -191,10 +171,6 @@ Thuerey, N., Holl, P., Mueller, M., Schnell, P., Trost, F., & Um, K. (2022). *Ph
 
 AGPL v3. See `LICENSE` for details. Academic use is unrestricted.
 Derivative works redistributed as software or offered as a network service must be released under AGPL v3, including making the source code available to users of the service.
-
-## Contact
-
-Arpit Mathur — retroranger24@gmail.com
 
 ## Citation
 
